@@ -1,0 +1,45 @@
+# Values for the kube-prometheus-stack chart.
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+#
+# The important setting is serviceMonitorSelectorNilUsesHelmValues=false, without
+# which Prometheus only picks up ServiceMonitors carrying its own release label
+# and silently ignores the application's.
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    retention: 6h
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits:   { cpu: 500m, memory: 1Gi }
+
+grafana:
+  enabled: true
+  adminPassword: clinicflow      # demo only
+  service:
+    type: ClusterIP
+  defaultDashboardsEnabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 200m, memory: 512Mi }
+
+alertmanager:
+  enabled: false                 # not needed for the demo
+
+# kind nodes do not expose these the way a cloud cluster does
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
