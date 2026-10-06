@@ -1,0 +1,10 @@
+# Logical isolation for everything ClinicFlow owns. Applied before the Helm
+# release so the namespace exists with the labels we want rather than being
+# created implicitly by --create-namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clinicflow
+  labels:
+    app.kubernetes.io/name: clinicflow
+    environment: demo

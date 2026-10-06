@@ -1,0 +1,20 @@
+# kind nodes serve kubelet metrics with a self-signed certificate, so Metrics
+# Server needs --kubelet-insecure-tls to scrape them. This patch is applied on
+# top of the upstream manifest in CI; it is not needed on EKS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-server
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: metrics-server
+          args:
+            - --cert-dir=/tmp
+            - --secure-port=10250
+            - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+            - --kubelet-use-node-status-port
+            - --metric-resolution=15s
+            - --kubelet-insecure-tls

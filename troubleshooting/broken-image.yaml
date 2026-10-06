@@ -1,0 +1,20 @@
+# BROKEN ON PURPOSE - the image tag does not exist.
+# Expected: ImagePullBackOff. There are no container logs to read because the
+# container never starts, so the evidence is only in the pod events:
+#   kubectl describe pod -l app=broken-image -n clinicflow | grep -A5 Events
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broken-image
+  namespace: clinicflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: broken-image }
+  template:
+    metadata:
+      labels: { app: broken-image }
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist
