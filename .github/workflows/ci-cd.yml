@@ -299,49 +299,241 @@ jobs:
           kubectl get deploy -n clinicflow -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'
           echo "::endgroup::"
 
-      - name: Smoke test the API through the Ingress
+      - name: Smoke test through the Ingress
         run: |
+          # Let the browser-facing name resolve on the runner, exactly as it would
+          # for a user who added it to their hosts file.
+          echo "127.0.0.1 clinicflow.local" | sudo tee -a /etc/hosts
+
           echo "waiting for the ingress to start serving..."
           for i in $(seq 1 30); do
-            if curl -fsS -H 'Host: clinicflow.local' http://localhost/api/appointments/stats >/dev/null 2>&1; then
-              break
-            fi
+            curl -fsS http://clinicflow.local/api/appointments/stats >/dev/null 2>&1 && break
             sleep 5
           done
 
-          echo "::group::GET /health"
-          curl -fsS -H 'Host: clinicflow.local' http://localhost/api/../health || \
-            kubectl exec -n clinicflow deploy/clinicflow-clinicflow-backend -- curl -fsS http://localhost:8000/health
+          # /health and /ready are probe endpoints, deliberately not routed
+          # through the Ingress, so they are checked from inside the pod.
+          echo "::group::GET /health and /ready (inside the backend pod)"
+          kubectl exec -n clinicflow deploy/clinicflow-clinicflow-backend -- curl -fsS http://localhost:8000/health
+          echo ""
+          kubectl exec -n clinicflow deploy/clinicflow-clinicflow-backend -- curl -fsS http://localhost:8000/ready
           echo ""
           echo "::endgroup::"
 
-          echo "::group::POST then GET an appointment"
-          curl -fsS -X POST -H 'Host: clinicflow.local' -H 'Content-Type: application/json' \
-            -d '{"patient_name":"CI Smoke","patient_phone":"9999999999","doctor":"Dr. Pipeline","department":"Cardiology","scheduled_at":"2027-06-01T09:00:00","duration_minutes":30,"reason":"pipeline smoke test"}' \
-            http://localhost/api/appointments
-          echo ""
-          curl -fsS -H 'Host: clinicflow.local' http://localhost/api/appointments
-          echo ""
+          echo "::group::seed a day of appointments through the Ingress (includes a clash check)"
+          bash scripts/seed.sh http://clinicflow.local
           echo "::endgroup::"
 
-          echo "::group::stats"
-          curl -fsS -H 'Host: clinicflow.local' http://localhost/api/appointments/stats
-          echo ""
+          echo "::group::GET /api/appointments through the Ingress"
+          curl -fsS http://clinicflow.local/api/appointments | python3 -m json.tool | head -40
           echo "::endgroup::"
 
-          echo "::group::frontend index.html"
-          curl -fsS -H 'Host: clinicflow.local' http://localhost/ | head -20
+          echo "::group::frontend through the Ingress"
+          curl -fsS http://clinicflow.local/ | head -12
           echo "::endgroup::"
 
-      - name: Prometheus metrics are exposed
+      - name: Prometheus metrics are exposed by the backend
         run: |
           kubectl exec -n clinicflow deploy/clinicflow-clinicflow-backend -- \
-            curl -fsS http://localhost:8000/metrics | grep -E '^http_requests_total' | head -10
+            curl -fsS http://localhost:8000/metrics | grep -E '^http_requests_total' | head -15
+
+      # ---------------------------------------------------------------- #
+      #  Observability: Prometheus scraping the app, Grafana on top
+      # ---------------------------------------------------------------- #
+      - name: Install Prometheus and Grafana (kube-prometheus-stack)
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+            -n monitoring --create-namespace \
+            -f monitoring/prometheus-values.yaml \
+            --wait --timeout 10m
+          kubectl get pods -n monitoring
+
+      - name: Turn on the ServiceMonitor for the backend
+        run: |
+          helm upgrade clinicflow ./helm/clinicflow -n clinicflow \
+            --reuse-values --set serviceMonitor.enabled=true --wait --timeout 5m
+          kubectl get servicemonitor -n clinicflow
+
+      - name: Generate traffic for the dashboards
+        run: |
+          # ~90 seconds of mixed reads so rate() has something to show
+          end=$(( $(date +%s) + 90 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            curl -s -o /dev/null http://clinicflow.local/api/appointments
+            curl -s -o /dev/null http://clinicflow.local/api/appointments/stats
+            curl -s -o /dev/null "http://clinicflow.local/api/appointments?status=scheduled"
+            curl -s -o /dev/null http://clinicflow.local/api/appointments/999999   # a 404, so errors are visible too
+            sleep 0.2
+          done
+          echo "traffic generated"
+
+      - name: Prometheus is scraping the app and the target is UP
+        run: |
+          kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090 >/tmp/pf-prom.log 2>&1 &
+          sleep 5
+
+          echo "waiting for the clinicflow target to report up..."
+          for i in $(seq 1 30); do
+            up=$(curl -s localhost:9090/api/v1/targets | python3 -c "
+          import json, sys
+          t = json.load(sys.stdin)['data']['activeTargets']
+          print(sum(1 for x in t if 'clinicflow' in x['labels'].get('job', '') and x['health'] == 'up'))
+          " 2>/dev/null || echo 0)
+            [ "${up:-0}" -ge 1 ] && break
+            sleep 10
+          done
+
+          echo "::group::active scrape targets for the application"
+          curl -s localhost:9090/api/v1/targets | python3 -c "
+          import json, sys
+          for x in json.load(sys.stdin)['data']['activeTargets']:
+              if 'clinicflow' in x['labels'].get('job', ''):
+                  print(f\"{x['labels']['job']:<34} {x['scrapeUrl']:<44} health={x['health']}  lastScrape={x['lastScrape'][:19]}\")
+          "
+          echo "::endgroup::"
+
+          echo "::group::PromQL: request rate by endpoint"
+          curl -s localhost:9090/api/v1/query --data-urlencode \
+            'query=sum by (handler, status) (rate(http_requests_total{job=~".*clinicflow.*"}[1m]))' \
+            | python3 -c "
+          import json, sys
+          for r in json.load(sys.stdin)['data']['result']:
+              print(f\"{r['metric'].get('handler',''):<34} {r['metric'].get('status',''):<4} {float(r['value'][1]):.3f} req/s\")
+          "
+          echo "::endgroup::"
+
+          [ "${up:-0}" -ge 1 ] || { echo "the clinicflow target never came up" >&2; exit 1; }
+
+      - name: Load the ClinicFlow dashboard into Grafana
+        run: |
+          kubectl -n monitoring port-forward svc/monitoring-grafana 3001:80 >/tmp/pf-grafana.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS localhost:3001/api/health >/dev/null 2>&1 && break
+            sleep 3
+          done
+          curl -fsS localhost:3001/api/health; echo
+
+          python3 -c "
+          import json
+          dash = json.load(open('monitoring/grafana-dashboard.json'))
+          print(json.dumps({'dashboard': dash, 'overwrite': True, 'folderId': 0}))
+          " > /tmp/dashboard-payload.json
+
+          curl -fsS -u admin:clinicflow -H 'Content-Type: application/json' \
+            -X POST localhost:3001/api/dashboards/db -d @/tmp/dashboard-payload.json
+          echo
+
+      # ---------------------------------------------------------------- #
+      #  Evidence: real browser screenshots of the running system
+      # ---------------------------------------------------------------- #
+      - name: Set up Node for the screenshot run
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Capture screenshots
+        working-directory: scripts
+        run: |
+          npm init -y >/dev/null
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+          node capture-screenshots.mjs ../evidence app prometheus grafana
+
+      - name: Record cluster state alongside the screenshots
+        if: always()
+        run: |
+          mkdir -p evidence
+          {
+            echo "# kubectl get pods -n clinicflow -o wide"; kubectl get pods -n clinicflow -o wide; echo
+            echo "# kubectl get svc -n clinicflow";          kubectl get svc -n clinicflow; echo
+            echo "# kubectl get ingress -n clinicflow";      kubectl get ingress -n clinicflow; echo
+            echo "# kubectl get hpa -n clinicflow";          kubectl get hpa -n clinicflow 2>&1; echo
+            echo "# helm list -A";                           helm list -A; echo
+            echo "# kubectl get pods -n monitoring";         kubectl get pods -n monitoring; echo
+          } > evidence/cluster-state.txt 2>&1
+          cat evidence/cluster-state.txt
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-evidence
+          path: evidence/
+          retention-days: 30
 
       - name: Diagnostics on failure
         if: failure()
         run: |
-          kubectl get pods -n clinicflow -o wide || true
+          kubectl get pods -A -o wide || true
           kubectl describe pods -n clinicflow || true
           kubectl logs -n clinicflow -l app.kubernetes.io/component=backend --tail=100 || true
           kubectl get events -n clinicflow --sort-by=.lastTimestamp || true
+          kubectl get events -n monitoring --sort-by=.lastTimestamp | tail -30 || true
+
+  # ------------------------------------------------------------------ #
+  #  5. The whole stack with Docker Compose
+  # ------------------------------------------------------------------ #
+  compose:
+    name: Docker Compose stack
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: docker compose up --build
+        run: docker compose up -d --build
+
+      - name: Wait for all three services
+        run: |
+          for i in $(seq 1 40); do
+            curl -fsS localhost:8000/ready >/dev/null 2>&1 && curl -fsS localhost:3000/healthz >/dev/null 2>&1 && break
+            sleep 3
+          done
+          echo "::group::docker compose ps"
+          docker compose ps
+          echo "::endgroup::"
+          echo "::group::backend /health and /ready"
+          curl -fsS localhost:8000/health; echo
+          curl -fsS localhost:8000/ready; echo
+          echo "::endgroup::"
+          echo "::group::container users (both must be non-root)"
+          echo "backend : $(docker compose exec -T backend id)"
+          echo "frontend: $(docker compose exec -T frontend id)"
+          echo "::endgroup::"
+
+      - name: Seed through the frontend's /api proxy
+        run: bash scripts/seed.sh http://localhost:3000
+
+      - name: Set up Node for the screenshot run
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Screenshot localhost:3000
+        working-directory: scripts
+        run: |
+          npm init -y >/dev/null
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+          node capture-screenshots.mjs ../evidence compose
+
+      - name: Save compose logs
+        if: always()
+        run: |
+          mkdir -p evidence
+          docker compose ps > evidence/compose-ps.txt 2>&1
+          docker compose logs --no-color > evidence/compose-logs.txt 2>&1
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-evidence
+          path: evidence/
+          retention-days: 30
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
