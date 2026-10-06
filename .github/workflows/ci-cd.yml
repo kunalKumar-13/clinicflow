@@ -236,10 +236,25 @@ jobs:
           config: .github/kind-config.yaml
           wait: 120s
 
+      # kind maps host port 80 onto the control-plane node only, so the
+      # controller must run there. The upstream manifest selects on the OS
+      # alone, which let the scheduler put it on the worker roughly half the
+      # time and every request then got a TCP reset. Label the node and pin
+      # the controller to it, and pin the manifest to a release tag rather
+      # than a moving branch.
+      #
+      # `rollout status` is used instead of `wait --for=condition=Available`:
+      # with maxUnavailable: 1 on a single replica, Available is true before
+      # any pod has started, so that wait returned instantly and checked nothing.
       - name: Install the NGINX ingress controller
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-          kubectl -n ingress-nginx wait --for=condition=Available deploy/ingress-nginx-controller --timeout=300s
+          kubectl label node clinicflow-control-plane ingress-ready=true --overwrite
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/kind/deploy.yaml
+          kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type merge \
+            -p '{"spec":{"template":{"spec":{"nodeSelector":{"ingress-ready":"true","kubernetes.io/os":"linux"}}}}}'
+          kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=300s
+          kubectl -n ingress-nginx wait --for=condition=complete job --all --timeout=180s
+          kubectl -n ingress-nginx get pods -o wide
 
       - name: Install Metrics Server (so the HPA has CPU data)
         run: |
@@ -306,10 +321,20 @@ jobs:
           echo "127.0.0.1 clinicflow.local" | sudo tee -a /etc/hosts
 
           echo "waiting for the ingress to start serving..."
+          served=no
           for i in $(seq 1 30); do
-            curl -fsS http://clinicflow.local/api/appointments/stats >/dev/null 2>&1 && break
+            if curl -fsS http://clinicflow.local/api/appointments/stats >/dev/null 2>&1; then
+              served=yes; echo "ingress serving after $((i * 5))s"; break
+            fi
             sleep 5
           done
+          # Fail here with a clear message rather than three steps later with a
+          # bare curl error, which is what happened the first time round.
+          if [ "$served" != yes ]; then
+            echo "the ingress never served http://clinicflow.local within 150s" >&2
+            kubectl -n ingress-nginx get pods -o wide >&2
+            exit 1
+          fi
 
           # /health and /ready are probe endpoints, deliberately not routed
           # through the Ingress, so they are checked from inside the pod.
