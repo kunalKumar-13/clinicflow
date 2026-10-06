@@ -1,0 +1,347 @@
+# ClinicFlow CI/CD
+#
+#   test  ->  build + scan + push  ->  deploy to a kind cluster
+#
+# Tests run before anything is built, so a failing test never produces an image.
+# Images are tagged with the commit SHA, which makes any running pod traceable
+# back to the exact commit it came from.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ------------------------------------------------------------------ #
+  #  1. Quality gate
+  # ------------------------------------------------------------------ #
+  test:
+    name: Tests and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        working-directory: backend
+        run: ruff check app tests
+
+      - name: Run pytest
+        working-directory: backend
+        run: pytest -v
+
+      - name: Verify the Alembic migration applies
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./migration_check.db
+        run: |
+          alembic upgrade head
+          alembic current
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+  # ------------------------------------------------------------------ #
+  #  2. Infrastructure code is valid
+  # ------------------------------------------------------------------ #
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.3"
+
+      - name: Format check
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Init (no backend, no credentials needed)
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: Validate
+        working-directory: terraform
+        run: terraform validate
+
+  # ------------------------------------------------------------------ #
+  #  3. Build, scan, push
+  # ------------------------------------------------------------------ #
+  build:
+    name: Build, scan and push images
+    runs-on: ubuntu-latest
+    needs: [test, terraform]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    outputs:
+      sha_tag: ${{ steps.meta.outputs.sha_tag }}
+      owner_lc: ${{ steps.meta.outputs.owner_lc }}
+      backend_image: ${{ steps.meta.outputs.backend_image }}
+      frontend_image: ${{ steps.meta.outputs.frontend_image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The owner is lowercased because container registries reject uppercase
+      # characters in a repository name, and this account is "kunalKumar-13".
+      - name: Work out image names and the commit tag
+        id: meta
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "owner_lc=$OWNER_LC"
+            echo "sha_tag=${GITHUB_SHA::12}"
+            echo "backend_image=${REGISTRY}/${OWNER_LC}/clinicflow-backend"
+            echo "frontend_image=${REGISTRY}/${OWNER_LC}/clinicflow-frontend"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Export image names to the job environment
+        run: |
+          echo "BACKEND_IMAGE=${{ steps.meta.outputs.backend_image }}" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=${{ steps.meta.outputs.frontend_image }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build locally first so the images can be scanned before they are pushed.
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          load: true
+          tags: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          load: true
+          tags: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Full report first (never fails) so the log always shows what was found.
+      - name: Trivy report - backend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          format: table
+          exit-code: "0"
+
+      - name: Trivy report - frontend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          format: table
+          exit-code: "0"
+
+      # The gate. ignore-unfixed is deliberate: a CVE with no available patch
+      # cannot be acted on, so failing the build on it would only train people
+      # to ignore the scanner. Anything fixable at HIGH or CRITICAL stops the
+      # pipeline and no image is pushed.
+      - name: Trivy gate - backend (fails on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy gate - frontend (fails on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # Only now, after tests and the security gate, are images published.
+      - name: Push backend image
+        if: github.event_name == 'push'
+        run: |
+          docker tag ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }} ${{ env.BACKEND_IMAGE }}:main
+          docker push ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          docker push ${{ env.BACKEND_IMAGE }}:main
+
+      - name: Push frontend image
+        if: github.event_name == 'push'
+        run: |
+          docker tag ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }} ${{ env.FRONTEND_IMAGE }}:main
+          docker push ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
+          docker push ${{ env.FRONTEND_IMAGE }}:main
+
+  # ------------------------------------------------------------------ #
+  #  4. Deploy to a real cluster and prove it runs
+  # ------------------------------------------------------------------ #
+  deploy:
+    name: Deploy to kind and verify
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: read
+    env:
+      BACKEND_IMAGE: ${{ needs.build.outputs.backend_image }}
+      FRONTEND_IMAGE: ${{ needs.build.outputs.frontend_image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create a kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: clinicflow
+          config: .github/kind-config.yaml
+          wait: 120s
+
+      - name: Install the NGINX ingress controller
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+          kubectl -n ingress-nginx wait --for=condition=Available deploy/ingress-nginx-controller --timeout=300s
+
+      - name: Install Metrics Server (so the HPA has CPU data)
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+          kubectl -n kube-system patch deployment metrics-server --patch-file k8s/metrics-server-kind.yaml
+          kubectl -n kube-system rollout status deployment/metrics-server --timeout=180s
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pull the images that were just published and side-load them into kind,
+      # which avoids needing an imagePullSecret inside the cluster.
+      - name: Load the published images into kind
+        env:
+          TAG: ${{ needs.build.outputs.sha_tag }}
+        run: |
+          docker pull ${{ env.BACKEND_IMAGE }}:$TAG
+          docker pull ${{ env.FRONTEND_IMAGE }}:$TAG
+          kind load docker-image ${{ env.BACKEND_IMAGE }}:$TAG --name clinicflow
+          kind load docker-image ${{ env.FRONTEND_IMAGE }}:$TAG --name clinicflow
+
+      - name: Create the namespace
+        run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Helm deploy
+        env:
+          TAG: ${{ needs.build.outputs.sha_tag }}
+        run: |
+          helm upgrade --install clinicflow ./helm/clinicflow \
+            --namespace clinicflow \
+            -f helm/clinicflow/values-dev.yaml \
+            --set image.repository=${{ needs.build.outputs.owner_lc }}/clinicflow \
+            --set image.backendTag=$TAG \
+            --set image.frontendTag=$TAG \
+            --set image.pullPolicy=IfNotPresent \
+            --wait --timeout 6m
+
+      - name: Show what is running
+        run: |
+          echo "::group::pods"
+          kubectl get pods -n clinicflow -o wide
+          echo "::endgroup::"
+          echo "::group::services"
+          kubectl get svc -n clinicflow
+          echo "::endgroup::"
+          echo "::group::ingress"
+          kubectl get ingress -n clinicflow
+          echo "::endgroup::"
+          echo "::group::helm releases"
+          helm list -n clinicflow
+          echo "::endgroup::"
+          echo "::group::deployed image tags"
+          kubectl get deploy -n clinicflow -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'
+          echo "::endgroup::"
+
+      - name: Smoke test the API through the Ingress
+        run: |
+          echo "waiting for the ingress to start serving..."
+          for i in $(seq 1 30); do
+            if curl -fsS -H 'Host: clinicflow.local' http://localhost/api/appointments/stats >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+
+          echo "::group::GET /health"
+          curl -fsS -H 'Host: clinicflow.local' http://localhost/api/../health || \
+            kubectl exec -n clinicflow deploy/clinicflow-clinicflow-backend -- curl -fsS http://localhost:8000/health
+          echo ""
+          echo "::endgroup::"
+
+          echo "::group::POST then GET an appointment"
+          curl -fsS -X POST -H 'Host: clinicflow.local' -H 'Content-Type: application/json' \
+            -d '{"patient_name":"CI Smoke","patient_phone":"9999999999","doctor":"Dr. Pipeline","department":"Cardiology","scheduled_at":"2027-06-01T09:00:00","duration_minutes":30,"reason":"pipeline smoke test"}' \
+            http://localhost/api/appointments
+          echo ""
+          curl -fsS -H 'Host: clinicflow.local' http://localhost/api/appointments
+          echo ""
+          echo "::endgroup::"
+
+          echo "::group::stats"
+          curl -fsS -H 'Host: clinicflow.local' http://localhost/api/appointments/stats
+          echo ""
+          echo "::endgroup::"
+
+          echo "::group::frontend index.html"
+          curl -fsS -H 'Host: clinicflow.local' http://localhost/ | head -20
+          echo "::endgroup::"
+
+      - name: Prometheus metrics are exposed
+        run: |
+          kubectl exec -n clinicflow deploy/clinicflow-clinicflow-backend -- \
+            curl -fsS http://localhost:8000/metrics | grep -E '^http_requests_total' | head -10
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -n clinicflow -o wide || true
+          kubectl describe pods -n clinicflow || true
+          kubectl logs -n clinicflow -l app.kubernetes.io/component=backend --tail=100 || true
+          kubectl get events -n clinicflow --sort-by=.lastTimestamp || true
