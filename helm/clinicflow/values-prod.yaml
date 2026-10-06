@@ -1,0 +1,20 @@
+# Cluster values: more replicas, autoscaling and metrics scraping enabled.
+backend:
+  replicaCount: 3
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+frontend:
+  replicaCount: 3
+ingress:
+  enabled: true
+  host: clinicflow.example.com
+hpa:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 65
+serviceMonitor:
+  enabled: true
+postgres:
+  enabled: false          # production should use a managed database such as RDS

@@ -1,0 +1,61 @@
+# Default values. values-dev.yaml and values-prod.yaml override what differs.
+
+nameOverride: ""
+namespace: clinicflow
+
+image:
+  registry: ghcr.io
+  repository: kunalkumar-13/clinicflow
+  # CI overrides these with the commit SHA so a release is traceable to a commit.
+  backendTag: latest
+  frontendTag: latest
+  pullPolicy: IfNotPresent
+
+backend:
+  replicaCount: 2
+  containerPort: 8000
+  env:
+    openingHour: "8"
+    closingHour: "20"
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+frontend:
+  replicaCount: 2
+  containerPort: 8080
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  user: clinicflow
+  password: clinicflow        # demo only; a real cluster uses a Secret or an external DB
+  database: clinicflow
+  storage: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+service:
+  type: ClusterIP
+  backendPort: 8000
+  frontendPort: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: clinicflow.local
+  annotations: {}
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+serviceMonitor:
+  enabled: false          # turned on when the Prometheus Operator is installed
+  interval: 15s

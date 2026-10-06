@@ -1,0 +1,14 @@
+# Local kind/minikube: one replica each, no autoscaling, ingress on a local host.
+backend:
+  replicaCount: 2
+frontend:
+  replicaCount: 2
+ingress:
+  enabled: true
+  host: clinicflow.local
+hpa:
+  enabled: false
+serviceMonitor:
+  enabled: false
+postgres:
+  storage: 1Gi

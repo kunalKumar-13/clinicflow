@@ -1,0 +1,19 @@
+ClinicFlow {{ .Chart.AppVersion }} has been deployed as release "{{ .Release.Name }}".
+
+Check the rollout:
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl get svc  -n {{ .Release.Namespace }}
+  helm list -n {{ .Release.Namespace }}
+
+{{ if .Values.ingress.enabled -}}
+Reach the application through the Ingress:
+  echo "$(kubectl get ingress {{ include "clinicflow.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}') {{ .Values.ingress.host }}" | sudo tee -a /etc/hosts
+  open http://{{ .Values.ingress.host }}
+{{- else -}}
+Ingress is disabled, so port-forward instead:
+  kubectl port-forward svc/{{ include "clinicflow.fullname" . }}-frontend 8080:{{ .Values.service.frontendPort }} -n {{ .Release.Namespace }}
+{{- end }}
+
+API health:
+  kubectl port-forward svc/{{ include "clinicflow.fullname" . }}-backend 8000:{{ .Values.service.backendPort }} -n {{ .Release.Namespace }}
+  curl http://localhost:8000/health

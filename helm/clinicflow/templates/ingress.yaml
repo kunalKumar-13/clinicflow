@@ -1,0 +1,36 @@
+{{- if .Values.ingress.enabled }}
+# One hostname, two backends. /api goes to FastAPI, everything else to the SPA.
+# The /api rule is listed first because the controller matches the longest
+# prefix, and getting this order wrong is the classic reason API calls land on
+# the frontend and return index.html instead of JSON.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "clinicflow.fullname" . }}
+  labels:
+    {{- include "clinicflow.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clinicflow.fullname" . }}-backend
+                port:
+                  number: {{ .Values.service.backendPort }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "clinicflow.fullname" . }}-frontend
+                port:
+                  number: {{ .Values.service.frontendPort }}
+{{- end }}

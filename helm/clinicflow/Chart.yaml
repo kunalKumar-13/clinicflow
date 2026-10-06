@@ -1,0 +1,9 @@
+apiVersion: v2
+name: clinicflow
+description: ClinicFlow - clinic appointment booking (FastAPI + React + PostgreSQL)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords: [clinic, appointments, fastapi, react]
+maintainers:
+  - name: Kunal Kumar
