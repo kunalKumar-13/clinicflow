@@ -17,8 +17,18 @@ COPY . .
 RUN npm run build
 
 # ---------- stage 2: runtime ----------
-# nginx-unprivileged runs as uid 101 and listens on 8080, so no root is involved.
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+# nginx-unprivileged runs as uid 101 and listens on 8080, so no root is involved
+# at runtime. 1.30 is the current stable line.
+FROM nginxinc/nginx-unprivileged:1.30-alpine
+
+# Pull in any Alpine security patches released since the base image was built.
+# The first pipeline run failed the Trivy gate on a stale base (Alpine 3.21.3,
+# 42 fixable HIGH/CRITICAL in openssl, expat, libpng and c-ares), and pinning a
+# newer tag alone only fixes that until the next advisory. Root is needed for
+# apk, and the image drops straight back to the unprivileged user afterwards.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 
 # Backend address is substituted into the config at container start, so the same
 # image works in Docker Compose and in Kubernetes without a rebuild.

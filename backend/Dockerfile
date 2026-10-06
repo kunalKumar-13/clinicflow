@@ -13,8 +13,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# curl is used by the container healthcheck; libpq is needed by psycopg
+# Take any Debian security patches released since the base image was published,
+# then add curl (used by the healthcheck) and libpq (needed by psycopg).
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends curl libpq5 \
  && rm -rf /var/lib/apt/lists/*
 
