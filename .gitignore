@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local databases and environment files
+*.db
+*.sqlite3
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# Terraform (state can contain secrets)
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Helm packaging output
+*.tgz
