@@ -162,14 +162,14 @@ jobs:
 
       # Full report first (never fails) so the log always shows what was found.
       - name: Trivy report - backend
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
           format: table
           exit-code: "0"
 
       - name: Trivy report - frontend
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
           format: table
@@ -180,7 +180,7 @@ jobs:
       # to ignore the scanner. Anything fixable at HIGH or CRITICAL stops the
       # pipeline and no image is pushed.
       - name: Trivy gate - backend (fails on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
           format: table
@@ -189,7 +189,7 @@ jobs:
           exit-code: "1"
 
       - name: Trivy gate - frontend (fails on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha_tag }}
           format: table
