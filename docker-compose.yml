@@ -1,0 +1,62 @@
+# Full local stack: Postgres, the FastAPI backend and the Nginx-served frontend.
+#
+#   docker compose up --build
+#   open http://localhost:3000
+#
+# The backend waits for Postgres to pass its healthcheck before starting, so the
+# migration in the entrypoint never races the database.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: clinicflow-db
+    environment:
+      POSTGRES_USER: clinicflow
+      POSTGRES_PASSWORD: clinicflow
+      POSTGRES_DB: clinicflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinicflow -d clinicflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [clinicnet]
+
+  backend:
+    build:
+      context: ./backend
+    container_name: clinicflow-api
+    environment:
+      DATABASE_URL: postgresql+psycopg://clinicflow:clinicflow@postgres:5432/clinicflow
+      APP_VERSION: "0.1.0"
+      OPENING_HOUR: "8"
+      CLOSING_HOUR: "20"
+      CORS_ORIGINS: "http://localhost:3000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [clinicnet]
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: clinicflow-web
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
+    networks: [clinicnet]
+
+volumes:
+  pgdata:
+
+networks:
+  clinicnet:
+    driver: bridge
