@@ -1,0 +1,10 @@
+# Never commit state: it contains resource IDs and can contain secrets.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+
+# Real variable values stay local; only the .example file is committed.
+terraform.tfvars
+*.auto.tfvars

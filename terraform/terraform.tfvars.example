@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and adjust. Never commit the real tfvars file, and
+# never put AWS keys in here: use `aws configure` or environment variables.
+aws_region         = "ap-south-1"
+project_name       = "clinicflow"
+environment        = "dev"
+vpc_cidr           = "10.20.0.0/16"
+kubernetes_version = "1.31"
+
+# SPOT keeps the demo cluster cheap. Switch to ON_DEMAND for anything real.
+node_instance_type = "t3.medium"
+node_capacity_type = "SPOT"
+node_desired_size  = 2
+node_min_size      = 1
+node_max_size      = 4
+
+tags = {
+  Owner  = "kunal"
+  Course = "devops-capstone"
+}
