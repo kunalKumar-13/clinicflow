@@ -348,6 +348,23 @@ jobs:
           kubectl get deploy -n clinicflow -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'
           echo "::endgroup::"
 
+      # Both replicas run migrations on start. Before the advisory lock in
+      # alembic/env.py, one of them could lose the race to create the table and
+      # restart. This makes that regression visible instead of silently healed.
+      - name: No backend pod restarted (migration race check)
+        run: |
+          restarts=$(kubectl get pods -n clinicflow -l app.kubernetes.io/component=backend \
+            -o jsonpath='{range .items[*]}{.status.containerStatuses[0].restartCount}{"\n"}{end}')
+          echo "backend restart counts: $(echo $restarts)"
+          total=0; for r in $restarts; do total=$((total + r)); done
+          if [ "$total" -gt 0 ]; then
+            echo "a backend pod restarted; logs from the container that died:" >&2
+            for p in $(kubectl get pods -n clinicflow -l app.kubernetes.io/component=backend -o name); do
+              kubectl logs -n clinicflow "$p" --previous --tail=60 2>/dev/null || true
+            done
+            exit 1
+          fi
+
       - name: Smoke test through the Ingress
         run: |
           # Let the browser-facing name resolve on the runner, exactly as it would
