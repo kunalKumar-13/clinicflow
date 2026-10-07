@@ -253,7 +253,11 @@ jobs:
           kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type merge \
             -p '{"spec":{"template":{"spec":{"nodeSelector":{"ingress-ready":"true","kubernetes.io/os":"linux"}}}}}'
           kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=300s
-          kubectl -n ingress-nginx wait --for=condition=complete job --all --timeout=180s
+          # The admission-webhook jobs delete themselves once finished, so they
+          # may already be gone. Only wait if any are still present.
+          if kubectl -n ingress-nginx get jobs -o name 2>/dev/null | grep -q .; then
+            kubectl -n ingress-nginx wait --for=condition=complete job --all --timeout=180s
+          fi
           kubectl -n ingress-nginx get pods -o wide
 
       - name: Install Metrics Server (so the HPA has CPU data)
