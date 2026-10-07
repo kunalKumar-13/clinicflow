@@ -3,6 +3,9 @@
 nameOverride: ""
 namespace: clinicflow
 
+# Shown in the app's footer so it is clear which deployment you are looking at.
+environment: kubernetes
+
 image:
   registry: ghcr.io
   repository: kunalkumar-13/clinicflow

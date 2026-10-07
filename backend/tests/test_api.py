@@ -22,6 +22,14 @@ def test_ready_checks_the_database(client):
     assert response.json()["database"] == "connected"
 
 
+def test_meta_reports_the_build_serving_the_request(client):
+    response = client.get("/api/meta")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"version", "commit", "environment"}
+    assert body["commit"]  # never empty: "local" outside CI, the SHA inside it
+
+
 def test_metrics_endpoint_is_prometheus_formatted(client):
     client.get("/health")  # generate at least one request to count
     response = client.get("/metrics")

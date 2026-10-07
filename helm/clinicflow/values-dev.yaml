@@ -1,4 +1,5 @@
-# Local kind/minikube: one replica each, no autoscaling, ingress on a local host.
+# Local kind/minikube cluster: ingress on a local hostname.
+environment: kind
 backend:
   replicaCount: 2
 frontend:

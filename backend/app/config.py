@@ -11,6 +11,12 @@ class Settings:
     APP_NAME: str = "ClinicFlow API"
     APP_VERSION: str = os.getenv("APP_VERSION", "0.1.0")
 
+    # Baked into the image at build time by CI, so a running pod can say exactly
+    # which commit it was built from. "local" when built outside the pipeline.
+    GIT_SHA: str = os.getenv("GIT_SHA", "local")
+    # Where this instance is running: docker-compose, kind, eks...
+    APP_ENV: str = os.getenv("APP_ENV", "local")
+
     # Postgres in compose and in the cluster; SQLite is used by the test suite so
     # that tests never touch a real database.
     DATABASE_URL: str = os.getenv(

@@ -93,7 +93,18 @@ def root() -> dict:
 @app.get("/health", tags=["service"])
 def health() -> dict:
     """Liveness: the process is up. Deliberately does not touch the database."""
-    return {"status": "ok", "version": settings.APP_VERSION}
+    return {"status": "ok", "version": settings.APP_VERSION, "commit": settings.GIT_SHA}
+
+
+@app.get("/api/meta", tags=["service"])
+def meta() -> dict:
+    """Which build is answering. Under /api so it is reachable through the
+    Ingress; the UI shows it, so a new deployment is visible in the app itself."""
+    return {
+        "version": settings.APP_VERSION,
+        "commit": settings.GIT_SHA,
+        "environment": settings.APP_ENV,
+    }
 
 
 @app.get("/ready", tags=["service"])

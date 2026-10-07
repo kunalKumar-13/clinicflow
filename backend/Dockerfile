@@ -29,6 +29,11 @@ COPY app ./app
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# The commit this image was built from, passed in by CI. Declared this late so a
+# new SHA only invalidates the cheap final layers, not the dependency install.
+ARG GIT_SHA=local
+ENV GIT_SHA=${GIT_SHA}
+
 # Non-root user. Created after the copies so the files are owned correctly.
 RUN useradd --create-home --uid 10001 clinic \
  && chown -R clinic:clinic /app

@@ -28,10 +28,14 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        # export GIT_SHA=$(git rev-parse --short=12 HEAD) to label a local build
+        GIT_SHA: ${GIT_SHA:-local}
     container_name: clinicflow-api
     environment:
       DATABASE_URL: postgresql+psycopg://clinicflow:clinicflow@postgres:5432/clinicflow
       APP_VERSION: "0.1.0"
+      APP_ENV: docker-compose
       OPENING_HOUR: "8"
       CLOSING_HOUR: "20"
       CORS_ORIGINS: "http://localhost:3000"

@@ -1,4 +1,5 @@
 # Cluster values: more replicas, autoscaling and metrics scraping enabled.
+environment: eks
 backend:
   replicaCount: 3
   resources:

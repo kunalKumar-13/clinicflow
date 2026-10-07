@@ -140,6 +140,13 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [build, setBuild] = useState(null)
+
+  // Which build is serving us. Shown in the sidebar, so after a deployment you
+  // can see the new commit has actually reached the running pods.
+  useEffect(() => {
+    api('/meta').then(setBuild).catch(() => setBuild(null))
+  }, [])
 
   const load = useCallback(async () => {
     setError(null)
@@ -199,8 +206,18 @@ function App() {
         </nav>
 
         <div className="sidebar-foot">
-          <span className={`dot ${error ? 'bad' : 'good'}`} />
-          {error ? 'Backend unreachable' : 'Backend healthy'}
+          <div className="health">
+            <span className={`dot ${error ? 'bad' : 'good'}`} />
+            {error ? 'Backend unreachable' : 'Backend healthy'}
+          </div>
+          {build && (
+            <dl className="build">
+              <dt>Version</dt><dd>v{build.version}</dd>
+              <dt>Commit</dt><dd className="mono">{build.commit}</dd>
+              <dt>Running on</dt><dd>{build.environment}</dd>
+              <dt>Host</dt><dd className="mono">{window.location.host}</dd>
+            </dl>
+          )}
         </div>
       </aside>
 
