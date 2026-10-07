@@ -23,6 +23,7 @@ cluster through a tested, scanned, automated pipeline.
 | **Enforce hours** | appointments must start and end between 08:00 and 20:00 on one day |
 | **Track status** | scheduled, completed, cancelled, no-show |
 | **Dashboard** | today's bookings, chair time, counts by status, busiest doctor, search and filters |
+| **Build info** | the sidebar shows the version, commit and environment serving the page, so a new deployment is visible in the app itself |
 
 The clash rule is the part worth looking at. Two appointments overlap when each
 starts before the other ends, so the check is
@@ -47,7 +48,7 @@ doctor on the same day and ignoring cancelled bookings. It lives in
 ```
 git push
    └── GitHub Actions
-         ├── test       pytest (13 tests), ruff, Alembic migration check, frontend build
+         ├── test       pytest (14 tests), ruff, Alembic migration check, frontend build
          ├── terraform  fmt, init, validate
          ├── build      docker build -> Trivy scan -> push to GHCR, tagged with the commit SHA
          └── deploy     kind cluster -> ingress-nginx + metrics-server -> helm upgrade --install
@@ -82,6 +83,7 @@ git push
 | `PUT` | `/api/appointments/{id}` | partial update, re-checks clashes if the time or doctor changes |
 | `DELETE` | `/api/appointments/{id}` | remove |
 | `GET` | `/api/appointments/stats` | dashboard counts |
+| `GET` | `/api/meta` | which build is answering: version, commit SHA, environment |
 
 Interactive docs at `/docs` once the backend is running.
 
@@ -137,7 +139,7 @@ cd backend
 pytest
 ```
 
-13 tests, hitting nine of the API's ten routes (everything except the root info
+14 tests, hitting ten of the API's eleven routes (everything except the root info
 page). They run against a throwaway SQLite file created in
 the temp directory, never the real database, and the schema is dropped and
 recreated around every test so no test can leak state into another.
