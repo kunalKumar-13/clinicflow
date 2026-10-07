@@ -34,21 +34,29 @@ const pages = {
   prometheus: {
     url: 'http://localhost:9090/targets?search=clinicflow',
     file: 'prometheus-targets.png',
+    // The Prometheus UI polls for updates continuously, so the network never
+    // goes idle. Treat idle as best-effort and give the table time to render.
     ready: async (p) => {
-      await p.waitForLoadState('networkidle')
-      await p.waitForTimeout(3_000)
+      await settle(p, 10_000)
+      await p.waitForTimeout(6_000)
     },
   },
   // The provisioned ClinicFlow dashboard, in kiosk mode so only the panels show.
   grafana: {
-    url: 'http://localhost:3001/d/clinicflow-api/clinicflow-api?orgId=1&from=now-15m&to=now&refresh=10s&kiosk',
+    url: 'http://localhost:3001/d/clinicflow-api/clinicflow-api?orgId=1&from=now-5m&to=now&refresh=10s&kiosk',
     file: 'grafana-dashboard.png',
     headers: { Authorization: GRAFANA_AUTH },
     ready: async (p) => {
-      await p.waitForLoadState('networkidle')
+      await settle(p, 15_000) // refresh=10s keeps requests going, so best-effort
       await p.waitForTimeout(8_000) // let every panel finish its first query
     },
   },
+}
+
+// Wait for the network to go quiet, but do not fail if it never does: pages
+// that poll (Prometheus, a refreshing Grafana dashboard) never reach idle.
+async function settle(page, timeout) {
+  await page.waitForLoadState('networkidle', { timeout }).catch(() => {})
 }
 
 const browser = await chromium.launch()
