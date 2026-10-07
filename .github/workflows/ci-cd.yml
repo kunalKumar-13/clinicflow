@@ -327,6 +327,7 @@ jobs:
             --set image.backendTag=$TAG \
             --set image.frontendTag=$TAG \
             --set image.pullPolicy=IfNotPresent \
+            --set hpa.enabled=true \
             --wait --timeout 6m
 
       - name: Show what is running
