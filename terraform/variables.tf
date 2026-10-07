@@ -21,6 +21,17 @@ variable "environment" {
   }
 }
 
+variable "availability_zones" {
+  description = "Two AZs to spread the subnets across. Leave empty to pick the first two available in the region."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.availability_zones) == 0 || length(var.availability_zones) == 2
+    error_message = "availability_zones must be empty (auto) or list exactly two zones."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC. Must be large enough for four /24 subnets."
   type        = string

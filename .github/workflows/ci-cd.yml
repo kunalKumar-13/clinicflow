@@ -95,6 +95,35 @@ jobs:
         working-directory: terraform
         run: terraform validate
 
+      # A real `terraform plan` of the full VPC + EKS stack, without an AWS
+      # account. The provider normally calls STS at start-up; creating new
+      # resources needs nothing read back from AWS, so with that check skipped
+      # and the AZs passed in, the plan runs end to end. The override uses
+      # dummy credentials, so nothing could be applied from here even by
+      # accident.
+      - name: Plan (no AWS account needed)
+        working-directory: terraform
+        run: |
+          cat > ci_override.tf <<'EOF'
+          provider "aws" {
+            access_key                  = "plan-only-not-a-real-key"
+            secret_key                  = "plan-only-not-a-real-secret"
+            skip_credentials_validation = true
+            skip_requesting_account_id  = true
+            skip_metadata_api_check     = true
+          }
+          EOF
+          terraform plan -input=false -lock=false -refresh=false -no-color \
+            -var 'availability_zones=["ap-south-1a","ap-south-1b"]' | tee plan.txt
+          echo "::notice title=terraform plan::$(grep '^Plan:' plan.txt)"
+
+      - name: Upload the plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: terraform/plan.txt
+          retention-days: 30
+
   # ------------------------------------------------------------------ #
   #  3. Build, scan, push
   # ------------------------------------------------------------------ #

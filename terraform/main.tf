@@ -13,7 +13,11 @@
 # Two availability zones is the minimum EKS will accept, and it is also what
 # makes the cluster survive a single AZ failure.
 
+# Looked up from AWS unless availability_zones is set explicitly. Setting it
+# lets `terraform plan` run without any AWS API call, which the pipeline uses
+# to prove the configuration plans cleanly without needing an AWS account.
 data "aws_availability_zones" "available" {
+  count = length(var.availability_zones) == 0 ? 1 : 0
   state = "available"
 }
 
@@ -23,7 +27,9 @@ locals {
   # Carve the VPC CIDR into four /24s: two public, two private.
   public_subnets  = [cidrsubnet(var.vpc_cidr, 8, 0), cidrsubnet(var.vpc_cidr, 8, 1)]
   private_subnets = [cidrsubnet(var.vpc_cidr, 8, 10), cidrsubnet(var.vpc_cidr, 8, 11)]
-  azs             = slice(data.aws_availability_zones.available.names, 0, 2)
+  azs = (length(var.availability_zones) > 0
+    ? var.availability_zones
+  : slice(data.aws_availability_zones.available[0].names, 0, 2))
 
   tags = merge(var.tags, {
     Project     = var.project_name
