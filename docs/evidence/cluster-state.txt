@@ -1,0 +1,36 @@
+# kubectl get pods -n clinicflow -o wide
+NAME                                              READY   STATUS    RESTARTS   AGE     IP            NODE                NOMINATED NODE   READINESS GATES
+clinicflow-clinicflow-backend-7b77577787-k7pfn    1/1     Running   0          5m39s   10.244.1.8    clinicflow-worker   <none>           <none>
+clinicflow-clinicflow-backend-7b77577787-lglwz    1/1     Running   0          5m39s   10.244.1.10   clinicflow-worker   <none>           <none>
+clinicflow-clinicflow-frontend-55b4964f5f-n7gwj   1/1     Running   0          5m39s   10.244.1.7    clinicflow-worker   <none>           <none>
+clinicflow-clinicflow-frontend-55b4964f5f-nlfhf   1/1     Running   0          5m39s   10.244.1.6    clinicflow-worker   <none>           <none>
+clinicflow-clinicflow-postgres-55dc9779d4-b7mrf   1/1     Running   0          5m39s   10.244.1.11   clinicflow-worker   <none>           <none>
+
+# kubectl get svc -n clinicflow
+NAME                             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+clinicflow-clinicflow-backend    ClusterIP   10.96.235.133   <none>        8000/TCP   5m39s
+clinicflow-clinicflow-frontend   ClusterIP   10.96.230.190   <none>        80/TCP     5m39s
+clinicflow-clinicflow-postgres   ClusterIP   10.96.40.224    <none>        5432/TCP   5m39s
+
+# kubectl get ingress -n clinicflow
+NAME                    CLASS   HOSTS              ADDRESS     PORTS   AGE
+clinicflow-clinicflow   nginx   clinicflow.local   localhost   80      5m39s
+
+# kubectl get hpa -n clinicflow
+NAME                            REFERENCE                                  TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+clinicflow-clinicflow-backend   Deployment/clinicflow-clinicflow-backend   cpu: 3%/70%   2         6         2          5m39s
+
+# helm list -A
+NAME      	NAMESPACE 	REVISION	UPDATED                                	STATUS  	CHART                       	APP VERSION
+clinicflow	clinicflow	2       	2026-10-07 09:29:50.444110719 +0000 UTC	deployed	clinicflow-0.1.0            	0.1.0      
+monitoring	monitoring	1       	2026-10-07 09:28:49.173062565 +0000 UTC	deployed	kube-prometheus-stack-92.0.0	v0.94.1    
+
+# kubectl get pods -n monitoring
+NAME                                                  READY   STATUS    RESTARTS   AGE
+monitoring-grafana-5667875846-hrhlv                   3/3     Running   0          5m1s
+monitoring-kube-prometheus-operator-89ffdf989-hscv7   1/1     Running   0          5m1s
+monitoring-kube-state-metrics-6d8ffd8867-h9ldh        1/1     Running   0          5m1s
+monitoring-prometheus-node-exporter-n6qnk             1/1     Running   0          5m1s
+monitoring-prometheus-node-exporter-wnbw5             1/1     Running   0          5m1s
+prometheus-monitoring-kube-prometheus-prometheus-0    2/2     Running   0          4m58s
+
