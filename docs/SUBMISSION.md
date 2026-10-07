@@ -12,7 +12,7 @@ shows job summaries and logs to signed-in users, which is why the same output is
 committed here as well.
 
 **Repository:** https://github.com/kunalKumar-13/clinicflow
-**Green pipeline run:** RUN_URL
+**Green pipeline run:** https://github.com/kunalKumar-13/clinicflow/actions/runs/37602165587
 **Container images:** [clinicflow-backend](https://github.com/kunalKumar-13/clinicflow/pkgs/container/clinicflow-backend) · [clinicflow-frontend](https://github.com/kunalKumar-13/clinicflow/pkgs/container/clinicflow-frontend)
 
 ---
