@@ -33,7 +33,15 @@ app.add_middleware(
 )
 
 # Exposes /metrics in the Prometheus text format for the ServiceMonitor to scrape.
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+#
+# The per-endpoint latency histogram defaults to buckets of 0.1s, 0.5s and 1s.
+# This API answers in a few milliseconds, so every request fell in the first
+# bucket and histogram_quantile() reported a p95 of ~95ms for everything: an
+# interpolation artefact, not a measurement. Finer buckets make the p95 real.
+Instrumentator().instrument(
+    app,
+    latency_lowr_buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 1, 2.5),
+).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 # --------------------------------------------------------------------------- #
