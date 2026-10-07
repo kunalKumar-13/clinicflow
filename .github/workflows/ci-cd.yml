@@ -45,9 +45,24 @@ jobs:
         working-directory: backend
         run: ruff check app tests
 
+      # pipefail matters: the runner's default shell is `bash -e` without it,
+      # so `pytest | tee` would report tee's success even when tests fail.
       - name: Run pytest
         working-directory: backend
-        run: pytest -v
+        run: |
+          set -o pipefail
+          pytest -v 2>&1 | tee pytest-output.txt
+
+      - name: Test summary
+        if: always()
+        working-directory: backend
+        run: |
+          {
+            echo "## Tests"
+            echo '```'
+            grep -E "PASSED|FAILED|ERROR|passed|failed" pytest-output.txt || cat pytest-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify the Alembic migration applies
         working-directory: backend
@@ -116,6 +131,13 @@ jobs:
           terraform plan -input=false -lock=false -refresh=false -no-color \
             -var 'availability_zones=["ap-south-1a","ap-south-1b"]' | tee plan.txt
           echo "::notice title=terraform plan::$(grep '^Plan:' plan.txt)"
+          {
+            echo "## Terraform plan (VPC + EKS, ap-south-1)"
+            echo "Planned in CI without an AWS account; nothing was applied."
+            echo '```'
+            grep -E "will be created|^Plan:" plan.txt | sed 's/^ *# //'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the plan
         uses: actions/upload-artifact@v4
@@ -216,6 +238,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          output: trivy-gate-backend.txt
 
       - name: Trivy gate - frontend (fails on fixable HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@v0.36.0
@@ -225,6 +248,21 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          output: trivy-gate-frontend.txt
+
+      - name: Security scan summary
+        if: always()
+        run: |
+          {
+            echo "## Trivy security gate"
+            echo "Fails on any HIGH or CRITICAL vulnerability that has a fix available."
+            for side in backend frontend; do
+              echo "### $side image"
+              echo '```'
+              cat "trivy-gate-$side.txt" 2>/dev/null || echo "(scan did not run)"
+              echo '```'
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Only now, after tests and the security gate, are images published.
       - name: Push backend image
@@ -480,6 +518,19 @@ jobs:
           "
           echo "::endgroup::"
 
+          {
+            echo "## Prometheus"
+            echo "### Scrape targets for the application"
+            echo '```'
+            curl -s localhost:9090/api/v1/targets | python3 -c "
+          import json, sys
+          for x in json.load(sys.stdin)['data']['activeTargets']:
+              if 'clinicflow' in x['labels'].get('job', ''):
+                  print(x['labels']['job'], x['scrapeUrl'], 'health=' + x['health'])
+          "
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
           [ "${up:-0}" -ge 1 ] || { echo "the clinicflow target never came up" >&2; exit 1; }
 
       - name: Load the ClinicFlow dashboard into Grafana
@@ -530,6 +581,14 @@ jobs:
             echo "# kubectl get pods -n monitoring";         kubectl get pods -n monitoring; echo
           } > evidence/cluster-state.txt 2>&1
           cat evidence/cluster-state.txt
+          {
+            echo "## Kubernetes (kind) after helm upgrade --install"
+            echo '```'
+            cat evidence/cluster-state.txt
+            echo "# deployed images"
+            kubectl get deploy -n clinicflow -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload evidence
         if: always()

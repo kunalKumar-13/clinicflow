@@ -34,3 +34,6 @@ Thumbs.db
 
 # Helm packaging output
 *.tgz
+
+# CI scan output
+trivy-gate-*.txt
