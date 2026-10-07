@@ -13,9 +13,11 @@ cluster through a tested, scanned, automated pipeline.
 **Kunal Kumar · Roll No. 24BCS10027**
 
 > **For grading:** [`docs/SUBMISSION.md`](docs/SUBMISSION.md) maps every rubric
-> item to its evidence, and the [latest pipeline run](https://github.com/kunalKumar-13/clinicflow/actions/workflows/ci-cd.yml?query=branch%3Amain)
-> shows the test, security-scan, Terraform-plan and cluster results on its
-> summary page.
+> item to its evidence. Screenshots are in [`docs/screenshots/`](docs/screenshots/)
+> and the pipeline's test, Terraform-plan and cluster output in
+> [`docs/evidence/`](docs/evidence/). Each [pipeline run](https://github.com/kunalKumar-13/clinicflow/actions/workflows/ci-cd.yml?query=branch%3Amain)
+> also publishes the same results on its summary page (visible when signed in
+> to GitHub).
 
 ![ClinicFlow running in Kubernetes, reached through the Ingress](docs/screenshots/app-via-ingress.png)
 

@@ -3,7 +3,13 @@
 Where each item in the grading rubric is satisfied, and where to see it.
 Screenshots in [`docs/screenshots/`](screenshots/) were captured automatically
 by the pipeline (headless Chromium against the running system) or of public
-GitHub pages. None are mock-ups.
+GitHub pages. Text output from the same pipeline run (test results, Terraform
+plan, cluster state) is committed in [`docs/evidence/`](evidence/). None of it
+is mocked up.
+
+The pipeline also writes these results to each run's summary page. GitHub only
+shows job summaries and logs to signed-in users, which is why the same output is
+committed here as well.
 
 **Repository:** https://github.com/kunalKumar-13/clinicflow
 **Green pipeline run:** RUN_URL
@@ -16,7 +22,7 @@ GitHub pages. None are mock-ups.
 | Criterion | Evidence |
 |---|---|
 | FastAPI responds to `/health` | [`backend/app/main.py`](../backend/app/main.py); checked inside the pod by the deploy job |
-| 4+ REST endpoints (GET, POST, PUT, DELETE) list, get, create, update, delete, stats and meta under `/api`, plus `/health`, `/ready` and `/metrics` |
+| 4+ REST endpoints (GET, POST, PUT, DELETE) | list, get, create, update, delete, stats and meta under `/api`, plus `/health`, `/ready` and `/metrics` |
 | PostgreSQL table managed by Alembic | [`backend/alembic/versions/0001_create_appointments.py`](../backend/alembic/versions/0001_create_appointments.py); the pipeline runs `alembic upgrade head` on every push |
 | Frontend renders and calls the API | [`frontend/src/main.jsx`](../frontend/src/main.jsx) |
 | Responsive, usable UI | desktop: ![app](screenshots/app-docker-compose.png) phone width (390px): ![mobile](screenshots/app-mobile.png) |
@@ -25,7 +31,7 @@ GitHub pages. None are mock-ups.
 
 | Criterion | Evidence |
 |---|---|
-| `pytest` runs without errors | "Tests" section of the run summary; locally `cd backend && pytest -v` |
+| `pytest` runs without errors | [`evidence/pytest-output.txt`](evidence/pytest-output.txt): 14 passed, from the pipeline; locally `cd backend && pytest -v` |
 | 5+ tests over 3+ endpoints | 14 tests over 10 routes in [`backend/tests/test_api.py`](../backend/tests/test_api.py) |
 | Test database, not production | [`backend/tests/conftest.py`](../backend/tests/conftest.py): a throwaway SQLite file, schema rebuilt around every test |
 | `pytest.ini` / `conftest.py` | [`backend/pytest.ini`](../backend/pytest.ini), [`backend/tests/conftest.py`](../backend/tests/conftest.py) |
@@ -45,13 +51,13 @@ GitHub pages. None are mock-ups.
 | `backend/Dockerfile` builds | built on every push by the "Build, scan and push" job |
 | Frontend multi-stage (Node build, Nginx runtime) | [`frontend/Dockerfile`](../frontend/Dockerfile) |
 | Images run as non-root | backend uid 10001, frontend uid 101; the Compose job prints `id` from both containers |
-| `docker compose up --build` starts all three | "Docker Compose stack" job: `docker compose ps` shows postgres, backend, frontend healthy; the screenshot above is `localhost:3000` from that stack |
+| `docker compose up --build` starts all three | [`evidence/compose-ps.txt`](evidence/compose-ps.txt): postgres, backend and frontend up, from the pipeline's Compose job; the desktop screenshot above is `localhost:3000` from that stack (its sidebar says `docker-compose`) |
 
 ## M5 — CI/CD (15)
 
 | Criterion | Evidence |
 |---|---|
-| Workflow in `.github/workflows/` | [`ci-cd.yml`](../.github/workflows/ci-cd.yml) |
+| Workflow in `.github/workflows/` | [`ci-cd.yml`](../.github/workflows/ci-cd.yml); a green run: ![run](screenshots/pipeline-run.png) |
 | Triggers on push to `main` | `on: push: branches: [main]` |
 | `pytest` runs and fails the build on failure | "Tests and lint" job; `set -o pipefail` so a failing test cannot be masked |
 | Frontend built in the pipeline | "Build the frontend" step |
@@ -98,7 +104,7 @@ nobody can patch only teaches people to turn it off.
 |---|---|
 | Valid HCL in `terraform/` | [`terraform/`](../terraform); `fmt -check` and `validate` pass on every push |
 | `terraform init` | "Init" step |
-| `terraform plan` non-empty, no errors | "Terraform plan" in the run summary: **22 to add** (VPC, 2 public + 2 private subnets, IGW, NAT, route tables, IAM roles, EKS cluster, node group) |
+| `terraform plan` non-empty, no errors | [`evidence/terraform-plan.txt`](evidence/terraform-plan.txt): **22 to add** (VPC, 2 public + 2 private subnets, IGW, NAT, route tables, IAM roles, EKS cluster, node group); the plan line is also a public annotation on the run page |
 | VPC with 2+ public subnets | `aws_subnet.public` (count 2) in [`main.tf`](../terraform/main.tf) |
 | EKS with a node group | `aws_eks_cluster.this`, `aws_eks_node_group.this` |
 | `terraform destroy` | not run: see below |
@@ -118,11 +124,11 @@ cluster runs.
 |---|---|
 | `k8s/namespace.yaml` | [`k8s/namespace.yaml`](../k8s/namespace.yaml), applied by the deploy job |
 | Helm chart with `Chart.yaml`, `values.yaml`, templates | [`helm/clinicflow/`](../helm/clinicflow) |
-| `helm upgrade --install` succeeds | "Helm deploy" step; `helm list` in the run summary |
-| Backend and frontend at 2+ replicas | `kubectl get pods` in the run summary |
-| ClusterIP Services | `kubectl get svc` in the run summary |
+| `helm upgrade --install` succeeds | `helm list` in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
+| Backend and frontend at 2+ replicas | `kubectl get pods` in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
+| ClusterIP Services | `kubectl get svc` in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
 | Ingress: `/` to frontend, `/api` to backend | [`templates/ingress.yaml`](../helm/clinicflow/templates/ingress.yaml) |
-| All pods Running | run summary, and the deploy job fails if any backend pod restarts |
+| All pods Running | [`evidence/cluster-state.txt`](evidence/cluster-state.txt); the deploy job also fails if any backend pod restarts |
 | App through the Ingress | ![ingress](screenshots/app-via-ingress.png) |
 
 The cluster is a two-node kind cluster created inside the pipeline, not EKS.
@@ -133,7 +139,7 @@ The cluster is a two-node kind cluster created inside the pipeline, not EKS.
 |---|---|
 | `/metrics` in Prometheus format | "Prometheus metrics are exposed" step |
 | Prometheus scraping the app | ![targets](screenshots/prometheus-targets.png) |
-| Grafana installed and accessible | kube-prometheus-stack, see `helm list` |
+| Grafana installed and accessible | kube-prometheus-stack release and the Grafana pod in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
 | A panel with live application metrics | ![grafana](screenshots/grafana-dashboard.png) |
 
 ## M10 — Documentation and demo (5)
@@ -141,4 +147,4 @@ The cluster is a two-node kind cluster created inside the pipeline, not EKS.
 | Criterion | Evidence |
 |---|---|
 | `README.md` explaining the app | [`README.md`](../README.md) |
-| Live demo: commit, pipeline, deployment updates | push any change to `main`: the pipeline tests it, scans it, pushes `:<sha>` images and redeploys them. The app's sidebar shows the commit it was built from, so the new SHA is visible in the running app, and it matches the deployed image tag in the run summary |
+| Live demo: commit, pipeline, deployment updates | push any change to `main`: the pipeline tests it, scans it, pushes `:<sha>` images and redeploys them. The app's sidebar shows the commit it was built from, so the new SHA is visible in the running app, and it matches the deployed image tag on the package page |
