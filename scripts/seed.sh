@@ -14,6 +14,11 @@ BASE="${1:-http://localhost:8000}"
 HOST_HEADER="${2:-}"
 TODAY="$(date -u +%Y-%m-%d)"
 
+# python3 on Linux and macOS; on Windows `python3` is often only the Microsoft
+# Store stub, so fall back to `python` if python3 cannot actually run.
+PY=python3
+"$PY" -c "" >/dev/null 2>&1 || PY=python
+
 curl_api() {
   if [ -n "$HOST_HEADER" ]; then
     curl -sS -H "Host: $HOST_HEADER" -H 'Content-Type: application/json' "$@"
@@ -60,7 +65,7 @@ echo "double-booking Dr. Mehta at 09:15 -> HTTP $clash (expected 409)"
 [ "$clash" = "409" ] || { echo "clash rule did not fire" >&2; exit 1; }
 
 # Move a few through their lifecycle so every status shows up on the dashboard.
-ids=$(curl_api "$BASE/api/appointments" | python3 -c "import json,sys; print(' '.join(str(a['id']) for a in json.load(sys.stdin)))")
+ids=$(curl_api "$BASE/api/appointments" | "$PY" -c "import json,sys; print(' '.join(str(a['id']) for a in json.load(sys.stdin)))")
 set -- $ids
 [ $# -ge 4 ] && {
   curl_api -o /dev/null -X PUT "$BASE/api/appointments/$1" -d '{"status":"completed"}'

@@ -6,7 +6,7 @@
 //
 //   node capture-screenshots.mjs <outDir> <target> [<target> ...]
 //
-// where each target is one of: app, compose, prometheus, grafana.
+// where each target is one of: app, compose, compose-mobile, prometheus, grafana.
 
 import { chromium } from 'playwright'
 import { mkdirSync } from 'node:fs'
@@ -28,6 +28,13 @@ const pages = {
   compose: {
     url: 'http://localhost:3000/',
     file: 'app-docker-compose.png',
+    ready: async (p) => p.waitForSelector('table tbody tr', { timeout: 60_000 }),
+  },
+  // The same stack at phone width, for the "responsive UI" criterion.
+  'compose-mobile': {
+    url: 'http://localhost:3000/',
+    file: 'app-mobile.png',
+    viewport: { width: 390, height: 844 },
     ready: async (p) => p.waitForSelector('table tbody tr', { timeout: 60_000 }),
   },
   // Prometheus scrape targets, filtered to the application.
@@ -71,7 +78,7 @@ for (const name of targets) {
   }
 
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    viewport: spec.viewport ?? { width: 1440, height: 900 },
     deviceScaleFactor: 1,
     extraHTTPHeaders: spec.headers ?? {},
   })
