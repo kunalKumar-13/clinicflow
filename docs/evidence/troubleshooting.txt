@@ -1,0 +1,88 @@
+
+# 1. Broken image: a Deployment whose tag does not exist
+
+$ kubectl apply -f troubleshooting/broken-image.yaml
+deployment.apps/broken-image created
+
+$ kubectl get pods -n clinicflow -l app=broken-image
+NAME                            READY   STATUS         RESTARTS   AGE
+broken-image-69b7b56d5d-6xw7b   0/1     ErrImagePull   0          3s
+
+$ kubectl logs deploy/broken-image -n clinicflow
+Error from server (BadRequest): container "api" in pod "broken-image-69b7b56d5d-6xw7b" is waiting to start: image can't be pulled
+
+# no logs: the container never started, so the evidence is in the pod events
+
+$ kubectl describe pod -n clinicflow -l app=broken-image | sed -n '/Events:/,$p'
+Events:
+  Type     Reason     Age   From               Message
+  ----     ------     ----  ----               -------
+  Normal   Scheduled  3s    default-scheduler  Successfully assigned clinicflow/broken-image-69b7b56d5d-6xw7b to clinicflow-worker
+  Normal   Pulling    3s    kubelet            spec.containers{api}: Pulling image "ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist"
+  Warning  Failed     3s    kubelet            spec.containers{api}: Failed to pull image "ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist": rpc error: code = NotFound desc = failed to pull and unpack image "ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist": failed to resolve reference "ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist": ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist: not found
+  Warning  Failed     3s    kubelet            spec.containers{api}: Error: ErrImagePull
+  Normal   BackOff    2s    kubelet            spec.containers{api}: Back-off pulling image "ghcr.io/kunalkumar-13/clinicflow-backend:does-not-exist"
+  Warning  Failed     2s    kubelet            spec.containers{api}: Error: ImagePullBackOff
+
+# root cause: tag 'does-not-exist' is not in GHCR. Fix: use the image the working backend runs
+
+$ kubectl get deploy clinicflow-clinicflow-backend -n clinicflow -o jsonpath={.spec.template.spec.containers[0].image}{"\n"}
+ghcr.io/kunalkumar-13/clinicflow-backend:d3351cb57836
+
+$ kubectl set image deployment/broken-image api=ghcr.io/kunalkumar-13/clinicflow-backend:d3351cb57836 -n clinicflow
+deployment.apps/broken-image image updated
+
+$ kubectl rollout status deployment/broken-image -n clinicflow --timeout=180s
+Waiting for deployment "broken-image" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "broken-image" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "broken-image" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "broken-image" rollout to finish: 1 old replicas are pending termination...
+deployment "broken-image" successfully rolled out
+
+$ kubectl get pods -n clinicflow -l app=broken-image
+NAME                           READY   STATUS        RESTARTS   AGE
+broken-image-5447d47f-jp8q8    1/1     Terminating   0          2s
+broken-image-5b5f7b894-pzqkv   1/1     Running       0          2s
+
+# 2. Broken Service: the selector does not match the pod labels
+
+$ kubectl apply -f troubleshooting/broken-service.yaml
+deployment.apps/broken-service-app created
+service/broken-service created
+
+$ kubectl get svc broken-service -n clinicflow
+NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+broken-service   ClusterIP   10.96.206.137   <none>        80/TCP    2s
+
+$ kubectl get endpoints broken-service -n clinicflow
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME             ENDPOINTS   AGE
+broken-service   <none>      2s
+
+$ kubectl get pods -n clinicflow -l app=clinic-api-v2 --show-labels
+NAME                                 READY   STATUS    RESTARTS   AGE   LABELS
+broken-service-app-9f757c7c6-5wsph   1/1     Running   0          2s    app=clinic-api-v2,pod-template-hash=9f757c7c6
+
+$ kubectl describe svc broken-service -n clinicflow | grep -E 'Selector|Endpoints'
+Selector:                 app=clinic-api
+Endpoints:                
+
+# root cause: selector app=clinic-api, pods are app=clinic-api-v2. Fix: make the selector match
+
+$ kubectl patch svc broken-service -n clinicflow -p {"spec":{"selector":{"app":"clinic-api-v2"}}}
+service/broken-service patched
+
+$ kubectl get endpoints broken-service -n clinicflow
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+NAME             ENDPOINTS        AGE
+broken-service   10.244.1.21:80   8s
+
+$ curl http://broken-service   # from a pod inside the cluster
+HTTP 200
+
+# clean up
+
+$ kubectl delete -f troubleshooting/broken-image.yaml -f troubleshooting/broken-service.yaml --wait=false
+deployment.apps "broken-image" deleted from clinicflow namespace
+deployment.apps "broken-service-app" deleted from clinicflow namespace
+service "broken-service" deleted from clinicflow namespace

@@ -240,6 +240,11 @@ kubectl get hpa -n clinicflow -w
 - `broken-service.yaml` — a Service whose selector does not match its pods. It
   gets a ClusterIP and looks healthy, but `kubectl get endpoints` is empty.
 
+The deploy job runs both on every push: it breaks the cluster, finds the cause,
+fixes it and checks the fix (the rollout completes; the Service gets an endpoint
+and answers HTTP 200). The transcript is in
+[`docs/evidence/troubleshooting.txt`](docs/evidence/troubleshooting.txt).
+
 ---
 
 ## Terraform

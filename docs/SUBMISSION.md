@@ -3,7 +3,10 @@
 Where each item in the grading rubric is satisfied, and where to see it.
 Screenshots in [`docs/screenshots/`](screenshots/) were captured automatically
 by the pipeline (headless Chromium against the running system) or of public
-GitHub pages. Text output from the same pipeline run (test results, Terraform
+GitHub pages. The terminal screenshots (`pytest -v`, `docker compose`, Trivy,
+`terraform plan`, `kubectl`, `helm list`, `curl /metrics`, troubleshooting) are
+the job output of that run, rendered as images; lines are copied as they are,
+and the few cuts (image build output, Trivy's per-package table) are marked. Text output from the same pipeline run (test results, Terraform
 plan, cluster state) is committed in [`docs/evidence/`](evidence/). None of it
 is mocked up.
 
@@ -12,7 +15,7 @@ shows job summaries and logs to signed-in users, which is why the same output is
 committed here as well.
 
 **Repository:** https://github.com/kunalKumar-13/clinicflow
-**Green pipeline run:** https://github.com/kunalKumar-13/clinicflow/actions/runs/37602165587
+**Green pipeline run:** https://github.com/kunalKumar-13/clinicflow/actions/runs/38914556570 (every screenshot and evidence file below is from this run)
 **Container images:** [clinicflow-backend](https://github.com/kunalKumar-13/clinicflow/pkgs/container/clinicflow-backend) · [clinicflow-frontend](https://github.com/kunalKumar-13/clinicflow/pkgs/container/clinicflow-frontend)
 
 ---
@@ -31,7 +34,7 @@ committed here as well.
 
 | Criterion | Evidence |
 |---|---|
-| `pytest` runs without errors | [`evidence/pytest-output.txt`](evidence/pytest-output.txt): 14 passed, from the pipeline; locally `cd backend && pytest -v` |
+| `pytest` runs without errors | ![pytest -v](screenshots/pytest-v.png) 14 passed; full output in [`evidence/pytest-output.txt`](evidence/pytest-output.txt); locally `cd backend && pytest -v` |
 | 5+ tests over 3+ endpoints | 14 tests over 10 routes in [`backend/tests/test_api.py`](../backend/tests/test_api.py) |
 | Test database, not production | [`backend/tests/conftest.py`](../backend/tests/conftest.py): a throwaway SQLite file, schema rebuilt around every test |
 | `pytest.ini` / `conftest.py` | [`backend/pytest.ini`](../backend/pytest.ini), [`backend/tests/conftest.py`](../backend/tests/conftest.py) |
@@ -51,7 +54,7 @@ committed here as well.
 | `backend/Dockerfile` builds | built on every push by the "Build, scan and push" job |
 | Frontend multi-stage (Node build, Nginx runtime) | [`frontend/Dockerfile`](../frontend/Dockerfile) |
 | Images run as non-root | backend uid 10001, frontend uid 101; the Compose job prints `id` from both containers |
-| `docker compose up --build` starts all three | [`evidence/compose-ps.txt`](evidence/compose-ps.txt): postgres, backend and frontend up, from the pipeline's Compose job; the desktop screenshot above is `localhost:3000` from that stack (its sidebar says `docker-compose`) |
+| `docker compose up --build` starts all three | ![docker compose up](screenshots/docker-compose-up.png) [`evidence/compose-ps.txt`](evidence/compose-ps.txt): postgres, backend and frontend up, from the pipeline's Compose job; the desktop screenshot above is `localhost:3000` from that stack (its sidebar says `docker-compose`) |
 
 ## M5 — CI/CD (15)
 
@@ -71,6 +74,7 @@ committed here as well.
 |---|---|
 | Trivy scans both images in CI | "Trivy report" and "Trivy gate" steps for backend and frontend |
 | Fails on HIGH or CRITICAL | gate uses `severity: HIGH,CRITICAL`, `exit-code: 1`; images are pushed only after it passes |
+| Scan output from a run | ![trivy](screenshots/trivy-scan.png) |
 | Explaining a finding | below |
 
 **What Trivy scanned and what it found.** Trivy scans each built image for known
@@ -104,7 +108,7 @@ nobody can patch only teaches people to turn it off.
 |---|---|
 | Valid HCL in `terraform/` | [`terraform/`](../terraform); `fmt -check` and `validate` pass on every push |
 | `terraform init` | "Init" step |
-| `terraform plan` non-empty, no errors | [`evidence/terraform-plan.txt`](evidence/terraform-plan.txt): **22 to add** (VPC, 2 public + 2 private subnets, IGW, NAT, route tables, IAM roles, EKS cluster, node group); the plan line is also a public annotation on the run page |
+| `terraform plan` non-empty, no errors | ![terraform plan](screenshots/terraform-plan.png) [`evidence/terraform-plan.txt`](evidence/terraform-plan.txt): **22 to add** (VPC, 2 public + 2 private subnets, IGW, NAT, route tables, IAM roles, EKS cluster, node group); the plan line is also a public annotation on the run page |
 | VPC with 2+ public subnets | `aws_subnet.public` (count 2) in [`main.tf`](../terraform/main.tf) |
 | EKS with a node group | `aws_eks_cluster.this`, `aws_eks_node_group.this` |
 | `terraform destroy` | not run: see below |
@@ -124,9 +128,8 @@ cluster runs.
 |---|---|
 | `k8s/namespace.yaml` | [`k8s/namespace.yaml`](../k8s/namespace.yaml), applied by the deploy job |
 | Helm chart with `Chart.yaml`, `values.yaml`, templates | [`helm/clinicflow/`](../helm/clinicflow) |
-| `helm upgrade --install` succeeds | `helm list` in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
-| Backend and frontend at 2+ replicas | `kubectl get pods` in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
-| ClusterIP Services | `kubectl get svc` in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
+| `helm upgrade --install` succeeds | ![helm list](screenshots/helm-list.png) |
+| Backend and frontend at 2+ replicas, ClusterIP Services, Ingress, HPA | ![kubectl get pods, svc, ingress, hpa](screenshots/kubectl-get-pods-svc.png) full text in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
 | Ingress: `/` to frontend, `/api` to backend | [`templates/ingress.yaml`](../helm/clinicflow/templates/ingress.yaml) |
 | All pods Running | [`evidence/cluster-state.txt`](evidence/cluster-state.txt); the deploy job also fails if any backend pod restarts |
 | App through the Ingress | ![ingress](screenshots/app-via-ingress.png) |
@@ -137,10 +140,41 @@ The cluster is a two-node kind cluster created inside the pipeline, not EKS.
 
 | Criterion | Evidence |
 |---|---|
-| `/metrics` in Prometheus format | "Prometheus metrics are exposed" step |
+| `/metrics` in Prometheus format | ![curl /metrics](screenshots/curl-metrics.png) |
 | Prometheus scraping the app | ![targets](screenshots/prometheus-targets.png) |
 | Grafana installed and accessible | kube-prometheus-stack release and the Grafana pod in [`evidence/cluster-state.txt`](evidence/cluster-state.txt) |
 | A panel with live application metrics | ![grafana](screenshots/grafana-dashboard.png) |
+
+## Troubleshooting
+
+[`troubleshooting/`](../troubleshooting) has two manifests that are broken on
+purpose. The deploy job applies each one to the running cluster, diagnoses it
+with the same commands you would use by hand, fixes it, and checks the fix
+worked. The step fails if any of those checks fail. Transcript:
+[`evidence/troubleshooting.txt`](evidence/troubleshooting.txt).
+
+| Fault | What you see | How it was found | Fix | Proof it worked |
+|---|---|---|---|---|
+| Image tag that does not exist | `ErrImagePull` / `ImagePullBackOff`, no logs | `kubectl describe pod`, Events: `...:does-not-exist: not found` | point the Deployment at the tag the working backend runs | rollout completes, pod `Running` |
+| Service selector does not match the pods | Service has a ClusterIP but `ENDPOINTS <none>` | `kubectl get pods --show-labels` vs `kubectl describe svc`: `app=clinic-api` vs `app=clinic-api-v2` | patch the selector | an endpoint appears, `curl http://broken-service` returns `HTTP 200` |
+
+![broken image](screenshots/troubleshooting-broken-image.png)
+![broken service](screenshots/troubleshooting-broken-service.png)
+
+## No secrets in the repository
+
+No AWS keys or other credentials are committed: Terraform state and real
+`terraform.tfvars` are git-ignored, and the CI plan uses obvious placeholder keys
+(`plan-only-not-a-real-key`) that AWS would reject. The pipeline creates a random Grafana admin password and
+a random Postgres password for every run, masks them in the logs, and passes them
+at install time; the Helm chart refuses to install without `postgres.password`.
+
+A [gitleaks](https://github.com/gitleaks/gitleaks) scan of the full history
+(`gitleaks git .`) reports no leaks. One early commit (`0714c86`) had the
+password of the CI-only demo Grafana inline in a `curl` command; it is fixed and
+the finding is listed in [`.gitleaksignore`](../.gitleaksignore) with the reason.
+The Docker Compose file keeps local development credentials for the database on
+`localhost`, as is usual for a laptop-only stack.
 
 ## M10 — Documentation and demo (5)
 

@@ -1,7 +1,7 @@
-data.aws_iam_policy_document.node_assume_role: Reading...
 data.aws_iam_policy_document.cluster_assume_role: Reading...
-data.aws_iam_policy_document.node_assume_role: Read complete after 0s [id=2851119427]
+data.aws_iam_policy_document.node_assume_role: Reading...
 data.aws_iam_policy_document.cluster_assume_role: Read complete after 0s [id=3552664922]
+data.aws_iam_policy_document.node_assume_role: Read complete after 0s [id=2851119427]
 
 Terraform used the selected providers to generate the following execution
 plan. Resource actions are indicated with the following symbols:
