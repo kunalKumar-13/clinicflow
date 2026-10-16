@@ -34,7 +34,7 @@ services:
     container_name: clinicflow-api
     environment:
       DATABASE_URL: postgresql+psycopg://clinicflow:clinicflow@postgres:5432/clinicflow
-      APP_VERSION: "0.1.0"
+      APP_VERSION: "0.2.0"
       APP_ENV: docker-compose
       OPENING_HOUR: "8"
       CLOSING_HOUR: "20"

@@ -9,7 +9,7 @@ import os
 
 class Settings:
     APP_NAME: str = "ClinicFlow API"
-    APP_VERSION: str = os.getenv("APP_VERSION", "0.1.0")
+    APP_VERSION: str = os.getenv("APP_VERSION", "0.2.0")
 
     # Baked into the image at build time by CI, so a running pod can say exactly
     # which commit it was built from. "local" when built outside the pipeline.
