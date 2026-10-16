@@ -596,6 +596,69 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The two manifests in troubleshooting/ are broken on purpose. Break the
+      # cluster with each one, find the cause the way the course teaches, fix
+      # it, and prove the fix worked. The transcript is kept as evidence.
+      - name: Troubleshooting lab - break it, find the cause, fix it
+        run: |
+          ns=clinicflow
+          out=evidence/troubleshooting.txt
+          mkdir -p evidence
+          say() { printf '\n$ %s\n' "$*" >> "$out"; }
+          run() { say "$*"; "$@" >> "$out" 2>&1; }
+          note() { printf '\n# %s\n' "$*" >> "$out"; }
+          : > "$out"
+
+          note "1. Broken image: a Deployment whose tag does not exist"
+          run kubectl apply -f troubleshooting/broken-image.yaml
+          for i in $(seq 1 40); do
+            reason=$(kubectl get pod -n $ns -l app=broken-image -o jsonpath='{.items[0].status.containerStatuses[0].state.waiting.reason}' 2>/dev/null)
+            case "$reason" in ErrImagePull|ImagePullBackOff) break ;; esac
+            sleep 3
+          done
+          run kubectl get pods -n $ns -l app=broken-image
+          say "kubectl logs deploy/broken-image -n $ns"
+          kubectl logs deploy/broken-image -n $ns >> "$out" 2>&1 || true
+          note "no logs: the container never started, so the evidence is in the pod events"
+          say "kubectl describe pod -n $ns -l app=broken-image | sed -n '/Events:/,\$p'"
+          kubectl describe pod -n $ns -l app=broken-image | sed -n '/Events:/,$p' >> "$out"
+          echo "$reason" | grep -qE 'ErrImagePull|ImagePullBackOff'
+          note "root cause: tag 'does-not-exist' is not in GHCR. Fix: use the tag this pipeline just pushed"
+          db=$(kubectl get deploy clinicflow-clinicflow-backend -n $ns -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value}')
+          run kubectl set image deployment/broken-image api="$BACKEND_IMAGE" -n $ns
+          kubectl set env deployment/broken-image -n $ns DATABASE_URL="$db" >/dev/null
+          run kubectl rollout status deployment/broken-image -n $ns --timeout=180s
+          run kubectl get pods -n $ns -l app=broken-image
+
+          note "2. Broken Service: the selector does not match the pod labels"
+          run kubectl apply -f troubleshooting/broken-service.yaml
+          kubectl rollout status deployment/broken-service-app -n $ns --timeout=120s >/dev/null
+          run kubectl get svc broken-service -n $ns
+          run kubectl get endpoints broken-service -n $ns
+          before=$(kubectl get endpoints broken-service -n $ns -o jsonpath='{.subsets[*].addresses[*].ip}')
+          run kubectl get pods -n $ns -l app=clinic-api-v2 --show-labels
+          say "kubectl describe svc broken-service -n $ns | grep -E 'Selector|Endpoints'"
+          kubectl describe svc broken-service -n $ns | grep -E 'Selector|Endpoints' >> "$out"
+          [ -z "$before" ]
+          note "root cause: selector app=clinic-api, pods are app=clinic-api-v2. Fix: make the selector match"
+          run kubectl patch svc broken-service -n $ns -p '{"spec":{"selector":{"app":"clinic-api-v2"}}}'
+          sleep 5
+          run kubectl get endpoints broken-service -n $ns
+          after=$(kubectl get endpoints broken-service -n $ns -o jsonpath='{.subsets[*].addresses[*].ip}')
+          [ -n "$after" ]
+          kubectl run svc-check -n $ns --restart=Never --image=curlimages/curl:8.10.1 -- \
+            curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://broken-service >/dev/null
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/svc-check -n $ns --timeout=60s >/dev/null
+          say "curl http://broken-service   # from a pod inside the cluster"
+          kubectl logs svc-check -n $ns >> "$out"
+          grep -q 'HTTP 200' <(kubectl logs svc-check -n $ns)
+
+          note "clean up"
+          run kubectl delete -f troubleshooting/broken-image.yaml -f troubleshooting/broken-service.yaml --wait=false
+          kubectl delete pod svc-check -n $ns --wait=false >/dev/null
+          cat "$out"
+          { echo "## Troubleshooting lab"; echo '```'; cat "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
