@@ -18,6 +18,12 @@ cluster through a tested, scanned, automated pipeline.
 > [`docs/evidence/`](docs/evidence/). Each [pipeline run](https://github.com/kunalKumar-13/clinicflow/actions/workflows/ci-cd.yml?query=branch%3Amain)
 > also publishes the same results on its summary page (visible when signed in
 > to GitHub).
+>
+> **Demo video:** [`docs/demo/ClinicFlow-demo.mp4`](docs/demo/ClinicFlow-demo.mp4)
+> (4 min, captions in [`.srt`](docs/demo/ClinicFlow-demo.srt)). It follows one real
+> change, commit `3cc58be` (version 0.1.0 to 0.2.0), from `git push` through
+> [its pipeline run](https://github.com/kunalKumar-13/clinicflow/actions/runs/38908997070)
+> to the redeployed app showing v0.2.0.
 
 ![ClinicFlow running in Kubernetes, reached through the Ingress](docs/screenshots/app-via-ingress.png)
 

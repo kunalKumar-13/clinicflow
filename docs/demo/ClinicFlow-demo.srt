@@ -1,0 +1,275 @@
+1
+00:00:00,100 --> 00:00:06,763
+Hi, I'm Kunal Kumar, roll number 24BCS10027.
+
+2
+00:00:06,713 --> 00:00:10,347
+This is my DevOps capstone, ClinicFlow.
+
+3
+00:00:10,347 --> 00:00:13,785
+It's an appointment desk for a small clinic.
+
+4
+00:00:13,785 --> 00:00:17,902
+In this video I'll show the app, then make a real change, push
+
+5
+00:00:17,902 --> 00:00:21,953
+it, and follow it all the way through the pipeline until it's
+
+6
+00:00:21,953 --> 00:00:23,414
+running on Kubernetes.
+
+7
+00:00:24,470 --> 00:00:26,411
+So this is the app.
+
+8
+00:00:26,361 --> 00:00:30,254
+Reception books a patient in with a doctor, and marks the
+
+9
+00:00:30,254 --> 00:00:33,328
+appointment completed, cancelled, or no show.
+
+10
+00:00:33,328 --> 00:00:37,309
+The one rule that really matters is that a doctor can't be
+
+11
+00:00:37,309 --> 00:00:38,270
+double booked.
+
+12
+00:00:38,270 --> 00:00:43,907
+If two slots overlap, the API says no, with a 409.
+
+13
+00:00:43,907 --> 00:00:47,934
+Down in the sidebar it shows the version, the commit, and
+
+14
+00:00:47,934 --> 00:00:49,277
+where it's running.
+
+15
+00:00:49,277 --> 00:00:53,386
+Right now that's version 0.1.0.
+
+16
+00:00:53,386 --> 00:00:55,493
+Keep an eye on that.
+
+17
+00:00:56,550 --> 00:01:01,363
+Behind it, there's a React frontend served by Nginx, a FastAPI
+
+18
+00:01:01,363 --> 00:01:05,944
+backend, and Postgres, with the table created by an Alembic
+
+19
+00:01:05,944 --> 00:01:06,720
+migration.
+
+20
+00:01:06,670 --> 00:01:10,466
+Locally, the whole thing runs with docker compose.
+
+21
+00:01:10,466 --> 00:01:14,257
+In the pipeline, the same images are deployed with a Helm
+
+22
+00:01:14,257 --> 00:01:18,381
+chart onto a Kubernetes cluster, with an Ingress in front, and
+
+23
+00:01:18,381 --> 00:01:20,709
+Prometheus and Grafana watching it.
+
+24
+00:01:21,760 --> 00:01:24,002
+Okay, the live change.
+
+25
+00:01:23,952 --> 00:01:28,468
+I'm bumping the version to 0.2.0, in the Helm chart, the
+
+26
+00:01:28,468 --> 00:01:31,452
+compose file, and the backend config.
+
+27
+00:01:31,452 --> 00:01:34,924
+Commit, push, and that's it from my side.
+
+28
+00:01:34,924 --> 00:01:38,049
+Nothing after this is done by hand.
+
+29
+00:01:39,100 --> 00:01:42,140
+The push starts the pipeline straight away.
+
+30
+00:01:42,090 --> 00:01:46,755
+Tests and lint run first, along with terraform validate.
+
+31
+00:01:46,755 --> 00:01:50,354
+Only if those pass does it build the images.
+
+32
+00:01:50,354 --> 00:01:54,334
+Then it brings the full stack up with docker compose, and
+
+33
+00:01:54,334 --> 00:01:56,708
+finally deploys to a kind cluster.
+
+34
+00:01:56,708 --> 00:02:01,477
+The whole run takes about eleven minutes, so this part is sped
+
+35
+00:02:01,477 --> 00:02:01,708
+up.
+
+36
+00:02:02,780 --> 00:02:05,948
+Here's what those jobs actually did.
+
+37
+00:02:05,898 --> 00:02:10,318
+All fourteen tests passed, including the double booking ones,
+
+38
+00:02:10,318 --> 00:02:12,564
+on a throwaway SQLite database.
+
+39
+00:02:12,564 --> 00:02:17,048
+Then each image is scanned with Trivy, and the gate fails the
+
+40
+00:02:17,048 --> 00:02:21,384
+build on any high or critical vulnerability that has a fix.
+
+41
+00:02:21,384 --> 00:02:25,395
+Only after that are the images pushed to the GitHub container
+
+42
+00:02:25,395 --> 00:02:28,814
+registry, tagged with the commit hash, never latest.
+
+43
+00:02:29,860 --> 00:02:31,870
+Then the deploy job.
+
+44
+00:02:31,820 --> 00:02:36,342
+Helm upgrades the release, and kubectl shows two backend pods,
+
+45
+00:02:36,342 --> 00:02:39,552
+two frontend pods and Postgres, all running.
+
+46
+00:02:39,552 --> 00:02:43,817
+And this is the app, opened through the Ingress, after the
+
+47
+00:02:43,817 --> 00:02:44,332
+deploy.
+
+48
+00:02:44,332 --> 00:02:49,829
+The sidebar now says version 0.2.0, and the commit is the one
+
+49
+00:02:49,829 --> 00:02:51,091
+I just pushed.
+
+50
+00:02:51,091 --> 00:02:55,091
+So the change went from my laptop to the cluster without me
+
+51
+00:02:55,091 --> 00:02:56,311
+touching anything.
+
+52
+00:02:57,380 --> 00:03:02,101
+For AWS, the terraform folder describes a VPC with public and
+
+53
+00:03:02,101 --> 00:03:06,822
+private subnets across two availability zones, a NAT gateway,
+
+54
+00:03:06,822 --> 00:03:10,305
+and an EKS cluster with a managed node group.
+
+55
+00:03:10,255 --> 00:03:14,110
+The pipeline validates it and makes a plan, twenty two
+
+56
+00:03:14,110 --> 00:03:15,324
+resources to add.
+
+57
+00:03:15,324 --> 00:03:19,879
+To be upfront, I planned it but didn't apply it, because EKS
+
+58
+00:03:19,879 --> 00:03:21,701
+costs money by the hour.
+
+59
+00:03:22,760 --> 00:03:24,435
+And monitoring.
+
+60
+00:03:24,385 --> 00:03:28,997
+The backend exposes a metrics endpoint, and Prometheus scrapes
+
+61
+00:03:28,997 --> 00:03:31,005
+it, so the target shows up.
+
+62
+00:03:31,005 --> 00:03:36,037
+Grafana has a dashboard for the API, with request rate by
+
+63
+00:03:36,037 --> 00:03:41,511
+endpoint, p95 latency, the 5xx rate, and how many backend pods
+
+64
+00:03:41,511 --> 00:03:42,394
+are ready.
+
+65
+00:03:43,460 --> 00:03:45,493
+So that's ClinicFlow.
+
+66
+00:03:45,443 --> 00:03:49,998
+Code on GitHub, tests and security scans on every push, images
+
+67
+00:03:49,998 --> 00:03:54,553
+in the registry, infrastructure as code, and a Helm deploy you
+
+68
+00:03:54,553 --> 00:03:55,802
+can watch update.
+
+69
+00:03:55,802 --> 00:03:57,712
+Thanks for watching.

@@ -147,4 +147,5 @@ The cluster is a two-node kind cluster created inside the pipeline, not EKS.
 | Criterion | Evidence |
 |---|---|
 | `README.md` explaining the app | [`README.md`](../README.md) |
+| Recorded walkthrough | [`demo/ClinicFlow-demo.mp4`](demo/ClinicFlow-demo.mp4): commit `3cc58be` bumps the version to 0.2.0, [run 38908997070](https://github.com/kunalKumar-13/clinicflow/actions/runs/38908997070) tests, scans, pushes and deploys it, and the app through the Ingress then shows v0.2.0 and that commit |
 | Live demo: commit, pipeline, deployment updates | push any change to `main`: the pipeline tests it, scans it, pushes `:<sha>` images and redeploys them. The app's sidebar shows the commit it was built from, so the new SHA is visible in the running app, and it matches the deployed image tag on the package page |
