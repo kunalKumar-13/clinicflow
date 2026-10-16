@@ -356,6 +356,15 @@ jobs:
           kind load docker-image ${{ env.BACKEND_IMAGE }}:$TAG --name clinicflow
           kind load docker-image ${{ env.FRONTEND_IMAGE }}:$TAG --name clinicflow
 
+      # Fresh passwords for every run, masked in the logs and never committed.
+      - name: Generate this run's passwords
+        run: |
+          for name in POSTGRES_PASSWORD GRAFANA_PASSWORD; do
+            value=$(openssl rand -hex 16)
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+
       - name: Create the namespace
         run: kubectl apply -f k8s/namespace.yaml
 
@@ -371,6 +380,7 @@ jobs:
             --set image.frontendTag=$TAG \
             --set image.pullPolicy=IfNotPresent \
             --set hpa.enabled=true \
+            --set postgres.password="$POSTGRES_PASSWORD" \
             --wait --timeout 6m
 
       - name: Show what is running
@@ -466,6 +476,7 @@ jobs:
           helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
             -n monitoring --create-namespace \
             -f monitoring/prometheus-values.yaml \
+            --set grafana.adminPassword="$GRAFANA_PASSWORD" \
             --wait --timeout 10m
           kubectl get pods -n monitoring
 
@@ -554,7 +565,7 @@ jobs:
           print(json.dumps({'dashboard': dash, 'overwrite': True, 'folderId': 0}))
           " > /tmp/dashboard-payload.json
 
-          curl -fsS -u admin:clinicflow -H 'Content-Type: application/json' \
+          curl -fsS -u "admin:$GRAFANA_PASSWORD" -H 'Content-Type: application/json' \
             -X POST localhost:3001/api/dashboards/db -d @/tmp/dashboard-payload.json
           echo
 

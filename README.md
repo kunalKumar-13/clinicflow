@@ -201,7 +201,8 @@ nobody can act on just teaches people to switch the gate off.
 ```bash
 kubectl apply -f k8s/namespace.yaml
 helm upgrade --install clinicflow ./helm/clinicflow \
-  -n clinicflow -f helm/clinicflow/values-dev.yaml
+  -n clinicflow -f helm/clinicflow/values-dev.yaml \
+  --set postgres.password="$(openssl rand -hex 16)"
 
 kubectl get pods -n clinicflow
 kubectl get svc  -n clinicflow
@@ -273,10 +274,11 @@ because an EKS cluster costs money while it runs.
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+  -n monitoring --create-namespace -f monitoring/prometheus-values.yaml \
+  --set grafana.adminPassword="$(openssl rand -hex 16)"
 
-helm upgrade --install clinicflow ./helm/clinicflow -n clinicflow \
-  --set serviceMonitor.enabled=true
+helm upgrade clinicflow ./helm/clinicflow -n clinicflow \
+  --reuse-values --set serviceMonitor.enabled=true
 
 kubectl port-forward svc/monitoring-grafana 3001:80 -n monitoring
 ```

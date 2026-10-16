@@ -19,7 +19,8 @@ prometheus:
 
 grafana:
   enabled: true
-  adminPassword: clinicflow      # demo only
+  # adminPassword is not stored here: pass it at install time with
+  #   --set grafana.adminPassword="$(openssl rand -hex 16)"
   service:
     type: ClusterIP
   defaultDashboardsEnabled: true

@@ -15,7 +15,8 @@ import { join } from 'node:path'
 const [outDir = 'screenshots', ...targets] = process.argv.slice(2)
 mkdirSync(outDir, { recursive: true })
 
-const GRAFANA_AUTH = 'Basic ' + Buffer.from('admin:clinicflow').toString('base64')
+// the pipeline generates the Grafana password for each run and exports it
+const GRAFANA_AUTH = 'Basic ' + Buffer.from(`admin:${process.env.GRAFANA_PASSWORD ?? ''}`).toString('base64')
 
 const pages = {
   // The app through the Kubernetes Ingress, by hostname, like a real browser.

@@ -18,5 +18,6 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 
 {{/* The database URL the backend uses, built from the postgres values. */}}
 {{- define "clinicflow.databaseUrl" -}}
-{{- printf "postgresql+psycopg://%s:%s@%s-postgres:5432/%s" .Values.postgres.user .Values.postgres.password (include "clinicflow.fullname" .) .Values.postgres.database -}}
+{{- $pw := required "postgres.password is required: --set postgres.password=$(openssl rand -hex 16)" .Values.postgres.password -}}
+{{- printf "postgresql+psycopg://%s:%s@%s-postgres:5432/%s" .Values.postgres.user $pw (include "clinicflow.fullname" .) .Values.postgres.database -}}
 {{- end -}}

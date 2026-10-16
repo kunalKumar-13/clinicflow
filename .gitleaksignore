@@ -1,0 +1,9 @@
+# Reviewed and fixed, but still in Git history.
+#
+# Commit 0714c86 put the Grafana admin password for the CI-only demo
+# cluster (a throwaway kind cluster on a GitHub runner) inline in a curl
+# command. It protected nothing real. Since then the pipeline generates a
+# random Grafana and Postgres password for every run, masks them, and passes
+# them at install time; no password is committed. The old commit is listed
+# here instead of rewriting published history.
+0714c86ec6707e8d31779931b094389569cbadc2:.github/workflows/ci-cd.yml:curl-auth-user:424

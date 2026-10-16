@@ -35,7 +35,9 @@ postgres:
   enabled: true
   image: postgres:16-alpine
   user: clinicflow
-  password: clinicflow        # demo only; a real cluster uses a Secret or an external DB
+  # Never stored here. Pass it at install time:
+  #   --set postgres.password="$(openssl rand -hex 16)"
+  password: ""
   database: clinicflow
   storage: 1Gi
   resources:
